@@ -137,3 +137,6 @@ dmypy.json
 
 # macOS display setting files
 .DS_Store
+
+# asdf tool versions
+.tool-versions

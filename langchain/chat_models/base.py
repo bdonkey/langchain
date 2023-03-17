@@ -12,6 +12,7 @@ from langchain.schema import (
     BaseMessage,
     ChatGeneration,
     ChatResult,
+    HumanMessage,
     LLMResult,
     PromptValue,
 )
@@ -116,13 +117,17 @@ class BaseChatModel(BaseLanguageModel, BaseModel, ABC):
     ) -> BaseMessage:
         return self._generate(messages, stop=stop).generations[0].message
 
+    def call_as_llm(self, message: str, stop: Optional[List[str]] = None) -> str:
+        result = self([HumanMessage(content=message)], stop=stop)
+        return result.content
+
 
 class SimpleChatModel(BaseChatModel):
     def _generate(
         self, messages: List[BaseMessage], stop: Optional[List[str]] = None
     ) -> ChatResult:
         output_str = self._call(messages, stop=stop)
-        message = AIMessage(text=output_str)
+        message = AIMessage(content=output_str)
         generation = ChatGeneration(message=message)
         return ChatResult(generations=[generation])
 
