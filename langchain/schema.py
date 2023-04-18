@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Dict, Generic, List, NamedTuple, Optional, TypeVar, Union
 
 from pydantic import BaseModel, Extra, Field, root_validator
 
@@ -31,7 +31,7 @@ class AgentAction(NamedTuple):
     """Agent's action to take."""
 
     tool: str
-    tool_input: str
+    tool_input: Union[str, dict]
     log: str
 
 
@@ -194,7 +194,7 @@ class BaseLanguageModel(BaseModel, ABC):
             raise ValueError(
                 "Could not import transformers python package. "
                 "This is needed in order to calculate get_num_tokens. "
-                "Please it install it with `pip install transformers`."
+                "Please install it with `pip install transformers`."
             )
         # create a GPT-3 tokenizer instance
         tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
@@ -240,7 +240,155 @@ class BaseMemory(BaseModel, ABC):
         """Clear memory contents."""
 
 
+class BaseChatMessageHistory(ABC):
+    """Base interface for chat message history
+    See `ChatMessageHistory` for default implementation.
+    """
+
+    """
+    Example:
+        .. code-block:: python
+
+            class FileChatMessageHistory(BaseChatMessageHistory):
+                storage_path:  str
+                session_id: str
+               
+               @property
+               def messages(self):
+                   with open(os.path.join(storage_path, session_id), 'r:utf-8') as f:
+                       messages = json.loads(f.read())
+                    return messages_from_dict(messages)     
+                
+               def add_user_message(self, message: str):
+                   message_ = HumanMessage(content=message)
+                   messages = self.messages.append(_message_to_dict(_message))
+                   with open(os.path.join(storage_path, session_id), 'w') as f:
+                       json.dump(f, messages)
+               
+               def add_ai_message(self, message: str):
+                   message_ = AIMessage(content=message)
+                   messages = self.messages.append(_message_to_dict(_message))
+                   with open(os.path.join(storage_path, session_id), 'w') as f:
+                       json.dump(f, messages)
+                       
+               def clear(self):
+                   with open(os.path.join(storage_path, session_id), 'w') as f:
+                       f.write("[]")
+    """
+
+    messages: List[BaseMessage]
+
+    @abstractmethod
+    def add_user_message(self, message: str) -> None:
+        """Add a user message to the store"""
+
+    @abstractmethod
+    def add_ai_message(self, message: str) -> None:
+        """Add an AI message to the store"""
+
+    @abstractmethod
+    def clear(self) -> None:
+        """Remove all messages from the store"""
+
+
+class Document(BaseModel):
+    """Interface for interacting with a document."""
+
+    page_content: str
+    metadata: dict = Field(default_factory=dict)
+
+
+class BaseRetriever(ABC):
+    @abstractmethod
+    def get_relevant_documents(self, query: str) -> List[Document]:
+        """Get documents relevant for a query.
+
+        Args:
+            query: string to find relevant documents for
+
+        Returns:
+            List of relevant documents
+        """
+
+    @abstractmethod
+    async def aget_relevant_documents(self, query: str) -> List[Document]:
+        """Get documents relevant for a query.
+
+        Args:
+            query: string to find relevant documents for
+
+        Returns:
+            List of relevant documents
+        """
+
+
 # For backwards compatibility
 
 
 Memory = BaseMemory
+
+T = TypeVar("T")
+
+
+class BaseOutputParser(BaseModel, ABC, Generic[T]):
+    """Class to parse the output of an LLM call.
+
+    Output parsers help structure language model responses.
+    """
+
+    @abstractmethod
+    def parse(self, text: str) -> T:
+        """Parse the output of an LLM call.
+
+        A method which takes in a string (assumed output of language model )
+        and parses it into some structure.
+
+        Args:
+            text: output of language model
+
+        Returns:
+            structured output
+        """
+
+    def parse_with_prompt(self, completion: str, prompt: PromptValue) -> Any:
+        """Optional method to parse the output of an LLM call with a prompt.
+
+        The prompt is largely provided in the event the OutputParser wants
+        to retry or fix the output in some way, and needs information from
+        the prompt to do so.
+
+        Args:
+            completion: output of language model
+            prompt: prompt value
+
+        Returns:
+            structured output
+        """
+        return self.parse(completion)
+
+    def get_format_instructions(self) -> str:
+        """Instructions on how the LLM output should be formatted."""
+        raise NotImplementedError
+
+    @property
+    def _type(self) -> str:
+        """Return the type key."""
+        raise NotImplementedError
+
+    def dict(self, **kwargs: Any) -> Dict:
+        """Return dictionary representation of output parser."""
+        output_parser_dict = super().dict()
+        output_parser_dict["_type"] = self._type
+        return output_parser_dict
+
+
+class OutputParserException(Exception):
+    """Exception that output parsers should raise to signify a parsing error.
+
+    This exists to differentiate parsing errors from other code or execution errors
+    that also may arise inside the output parser. OutputParserExceptions will be
+    available to catch and handle in ways to fix the parsing error, while other
+    errors will be raised.
+    """
+
+    pass

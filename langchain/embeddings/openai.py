@@ -2,7 +2,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 from pydantic import BaseModel, Extra, root_validator
@@ -43,14 +53,14 @@ def _create_retry_decorator(embeddings: OpenAIEmbeddings) -> Callable[[Any], Any
 
 
 def embed_with_retry(embeddings: OpenAIEmbeddings, **kwargs: Any) -> Any:
-    """Use tenacity to retry the completion call."""
+    """Use tenacity to retry the embedding call."""
     retry_decorator = _create_retry_decorator(embeddings)
 
     @retry_decorator
-    def _completion_with_retry(**kwargs: Any) -> Any:
+    def _embed_with_retry(**kwargs: Any) -> Any:
         return embeddings.client.create(**kwargs)
 
-    return _completion_with_retry(**kwargs)
+    return _embed_with_retry(**kwargs)
 
 
 class OpenAIEmbeddings(BaseModel, Embeddings):
@@ -65,13 +75,42 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
 
             from langchain.embeddings import OpenAIEmbeddings
             openai = OpenAIEmbeddings(openai_api_key="my-api-key")
+
+    In order to use the library with Microsoft Azure endpoints, you need to set
+    the OPENAI_API_TYPE, OPENAI_API_BASE, OPENAI_API_KEY and optionally and
+    API_VERSION.
+    The OPENAI_API_TYPE must be set to 'azure' and the others correspond to
+    the properties of your endpoint.
+    In addition, the deployment name must be passed as the model parameter.
+
+    Example:
+        .. code-block:: python
+
+            import os
+            os.environ["OPENAI_API_TYPE"] = "azure"
+            os.environ["OPENAI_API_BASE"] = "https://<your-endpoint.openai.azure.com/"
+            os.environ["OPENAI_API_KEY"] = "your AzureOpenAI key"
+
+            from langchain.embeddings.openai import OpenAIEmbeddings
+            embeddings = OpenAIEmbeddings(model="your-embeddings-deployment-name")
+            text = "This is a test query."
+            query_result = embeddings.embed_query(text)
+
     """
 
     client: Any  #: :meta private:
+    model: str = "text-embedding-ada-002"
+
+    # TODO: deprecate these two in favor of model
+    #  https://community.openai.com/t/api-update-engines-models/18597
+    #  https://github.com/openai/openai-python/issues/132
     document_model_name: str = "text-embedding-ada-002"
     query_model_name: str = "text-embedding-ada-002"
-    embedding_ctx_length: int = -1
+    embedding_ctx_length: int = 8191
     openai_api_key: Optional[str] = None
+    openai_organization: Optional[str] = None
+    allowed_special: Union[Literal["all"], Set[str]] = set()
+    disallowed_special: Union[Literal["all"], Set[str], Tuple[()]] = "all"
     chunk_size: int = 1000
     """Maximum number of texts to embed in each batch"""
     max_retries: int = 6
@@ -85,6 +124,14 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
     # TODO: deprecate this
     @root_validator(pre=True)
     def get_model_names(cls, values: Dict) -> Dict:
+        # model_name is for first generation, and model is for second generation.
+        # Both are not allowed together.
+        if "model_name" in values and "model" in values:
+            raise ValueError(
+                "Both `model_name` and `model` were provided, "
+                "but only one should be."
+            )
+
         """Get model names from just old model name."""
         if "model_name" in values:
             if "document_model_name" in values:
@@ -100,6 +147,23 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
             model_name = values.pop("model_name")
             values["document_model_name"] = f"text-search-{model_name}-doc-001"
             values["query_model_name"] = f"text-search-{model_name}-query-001"
+
+        # Set document/query model names from model parameter.
+        if "model" in values:
+            if "document_model_name" in values:
+                raise ValueError(
+                    "Both `model` and `document_model_name` were provided, "
+                    "but only one should be."
+                )
+            if "query_model_name" in values:
+                raise ValueError(
+                    "Both `model` and `query_model_name` were provided, "
+                    "but only one should be."
+                )
+            model = values.get("model")
+            values["document_model_name"] = model
+            values["query_model_name"] = model
+
         return values
 
     @root_validator()
@@ -108,15 +172,23 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
         openai_api_key = get_from_dict_or_env(
             values, "openai_api_key", "OPENAI_API_KEY"
         )
+        openai_organization = get_from_dict_or_env(
+            values,
+            "openai_organization",
+            "OPENAI_ORGANIZATION",
+            default="",
+        )
         try:
             import openai
 
             openai.api_key = openai_api_key
+            if openai_organization:
+                openai.organization = openai_organization
             values["client"] = openai.Embedding
         except ImportError:
             raise ValueError(
                 "Could not import openai python package. "
-                "Please it install it with `pip install openai`."
+                "Please install it with `pip install openai`."
             )
         return values
 
@@ -135,7 +207,11 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
             for i, text in enumerate(texts):
                 # replace newlines, which can negatively affect performance.
                 text = text.replace("\n", " ")
-                token = encoding.encode(text)
+                token = encoding.encode(
+                    text,
+                    allowed_special=self.allowed_special,
+                    disallowed_special=self.disallowed_special,
+                )
                 for j in range(0, len(token), self.embedding_ctx_length):
                     tokens += [token[j : j + self.embedding_ctx_length]]
                     indices += [i]
@@ -166,15 +242,16 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
             raise ValueError(
                 "Could not import tiktoken python package. "
                 "This is needed in order to for OpenAIEmbeddings. "
-                "Please it install it with `pip install tiktoken`."
+                "Please install it with `pip install tiktoken`."
             )
 
     def _embedding_func(self, text: str, *, engine: str) -> List[float]:
         """Call out to OpenAI's embedding endpoint."""
-        # replace newlines, which can negatively affect performance.
+        # handle large input text
         if self.embedding_ctx_length > 0:
             return self._get_len_safe_embeddings([text], engine=engine)[0]
         else:
+            # replace newlines, which can negatively affect performance.
             text = text.replace("\n", " ")
             return embed_with_retry(self, input=[text], engine=engine)["data"][0][
                 "embedding"
@@ -193,7 +270,7 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
         Returns:
             List of embeddings, one for each text.
         """
-        # handle large batches of texts
+        # handle batches of large input text
         if self.embedding_ctx_length > 0:
             return self._get_len_safe_embeddings(texts, engine=self.document_model_name)
         else:
@@ -215,7 +292,7 @@ class OpenAIEmbeddings(BaseModel, Embeddings):
             text: The text to embed.
 
         Returns:
-            Embeddings for the text.
+            Embedding for the text.
         """
         embedding = self._embedding_func(text, engine=self.query_model_name)
         return embedding

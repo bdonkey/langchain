@@ -1,6 +1,6 @@
 """## Zapier Natural Language Actions API
 \
-Full docs here: https://nla.zapier.com/api/v1/dynamic/docs
+Full docs here: https://nla.zapier.com/api/v1/docs
 
 **Zapier Natural Language Actions** gives you access to the 5k+ apps, 20k+ actions
 on Zapier's platform through a natural language API interface.
@@ -24,15 +24,15 @@ NLA offers both API Key and OAuth for signing NLA API requests.
     connected accounts on Zapier.com
 
 This quick start will focus on the server-side use case for brevity.
-Review [full docs](https://nla.zapier.com/api/v1/dynamic/docs) or reach out to
+Review [full docs](https://nla.zapier.com/api/v1/docs) or reach out to
 nla@zapier.com for user-facing oauth developer support.
 
 Typically you'd use SequentialChain, here's a basic example:
 
     1. Use NLA to find an email in Gmail
     2. Use LLMChain to generate a draft reply to (1)
-    3. Use NLA to send the draft reply (2) to someone in Slack via direct mesage
-    
+    3. Use NLA to send the draft reply (2) to someone in Slack via direct message
+
 In code, below:
 
 ```python
@@ -61,11 +61,14 @@ from langchain.utilities.zapier import ZapierNLAWrapper
 
 llm = OpenAI(temperature=0)
 zapier = ZapierNLAWrapper()
+## To leverage a nla_oauth_access_token you may pass the value to the ZapierNLAWrapper
+## If you do this there is no need to initialize the ZAPIER_NLA_API_KEY env variable
+# zapier = ZapierNLAWrapper(zapier_nla_oauth_access_token="TOKEN_HERE")
 toolkit = ZapierToolkit.from_zapier_nla_wrapper(zapier)
 agent = initialize_agent(
     toolkit.get_tools(),
     llm,
-    agent="zero-shot-react-description",
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
     verbose=True
 )
 
@@ -92,7 +95,7 @@ class ZapierNLARunAction(BaseTool):
             (eg. "get the latest email from Mike Knoop" for "Gmail: find email" action)
         params: a dict, optional. Any params provided will *override* AI guesses
             from `instructions` (see "understanding the AI guessing flow" here:
-            https://nla.zapier.com/api/v1/dynamic/docs)
+            https://nla.zapier.com/api/v1/docs)
     """
 
     api_wrapper: ZapierNLAWrapper = Field(default_factory=ZapierNLAWrapper)

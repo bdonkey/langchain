@@ -2,9 +2,12 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, Extra, Field, root_validator
+from pydantic import Extra, Field, root_validator
 
-from langchain.chains.combine_documents.base import BaseCombineDocumentsChain
+from langchain.chains.combine_documents.base import (
+    BaseCombineDocumentsChain,
+    format_document,
+)
 from langchain.chains.llm import LLMChain
 from langchain.docstore.document import Document
 from langchain.prompts.base import BasePromptTemplate
@@ -15,7 +18,7 @@ def _get_default_document_prompt() -> PromptTemplate:
     return PromptTemplate(input_variables=["page_content"], template="{page_content}")
 
 
-class StuffDocumentsChain(BaseCombineDocumentsChain, BaseModel):
+class StuffDocumentsChain(BaseCombineDocumentsChain):
     """Chain that combines documents by stuffing into context."""
 
     llm_chain: LLMChain
@@ -56,17 +59,8 @@ class StuffDocumentsChain(BaseCombineDocumentsChain, BaseModel):
         return values
 
     def _get_inputs(self, docs: List[Document], **kwargs: Any) -> dict:
-        # Get relevant information from each document.
-        doc_dicts = []
-        for doc in docs:
-            base_info = {"page_content": doc.page_content}
-            base_info.update(doc.metadata)
-            document_info = {
-                k: base_info[k] for k in self.document_prompt.input_variables
-            }
-            doc_dicts.append(document_info)
         # Format each document according to the prompt
-        doc_strings = [self.document_prompt.format(**doc) for doc in doc_dicts]
+        doc_strings = [format_document(doc, self.document_prompt) for doc in docs]
         # Join the documents together to put them in the prompt.
         inputs = {
             k: v

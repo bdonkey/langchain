@@ -138,5 +138,9 @@ dmypy.json
 # macOS display setting files
 .DS_Store
 
+# Wandb directory
+wandb/
+
 # asdf tool versions
 .tool-versions
+/.ruff_cache/
