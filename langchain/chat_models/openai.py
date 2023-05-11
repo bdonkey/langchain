@@ -143,10 +143,24 @@ class ChatOpenAI(BaseChatModel):
 
         extra = values.get("model_kwargs", {})
         for field_name in list(values):
+            if field_name in extra:
+                raise ValueError(f"Found {field_name} supplied twice.")
             if field_name not in all_required_field_names:
-                if field_name in extra:
-                    raise ValueError(f"Found {field_name} supplied twice.")
+                logger.warning(
+                    f"""WARNING! {field_name} is not default parameter.
+                    {field_name} was transferred to model_kwargs.
+                    Please confirm that {field_name} is what you intended."""
+                )
                 extra[field_name] = values.pop(field_name)
+
+        disallowed_model_kwargs = all_required_field_names | {"model"}
+        invalid_model_kwargs = disallowed_model_kwargs.intersection(extra.keys())
+        if invalid_model_kwargs:
+            raise ValueError(
+                f"Parameters {invalid_model_kwargs} should be specified explicitly. "
+                f"Instead they were passed in as part of `model_kwargs` parameter."
+            )
+
         values["model_kwargs"] = extra
         return values
 
@@ -162,17 +176,25 @@ class ChatOpenAI(BaseChatModel):
             "OPENAI_ORGANIZATION",
             default="",
         )
+        openai_api_base = get_from_dict_or_env(
+            values,
+            "openai_api_base",
+            "OPENAI_API_BASE",
+            default="",
+        )
         try:
             import openai
 
-            openai.api_key = openai_api_key
-            if openai_organization:
-                openai.organization = openai_organization
         except ImportError:
             raise ValueError(
                 "Could not import openai python package. "
                 "Please install it with `pip install openai`."
             )
+        openai.api_key = openai_api_key
+        if openai_organization:
+            openai.organization = openai_organization
+        if openai_api_base:
+            openai.api_base = openai_api_base
         try:
             values["client"] = openai.ChatCompletion
         except AttributeError:
