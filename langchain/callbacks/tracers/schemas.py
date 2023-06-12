@@ -23,8 +23,6 @@ class TracerSessionV1Base(BaseModel):
 class TracerSessionV1Create(TracerSessionV1Base):
     """Create class for TracerSessionV1."""
 
-    pass
-
 
 class TracerSessionV1(TracerSessionV1Base):
     """TracerSessionV1 schema."""
@@ -36,12 +34,6 @@ class TracerSessionBase(TracerSessionV1Base):
     """A creation class for TracerSession."""
 
     tenant_id: UUID
-
-
-class TracerSessionCreate(TracerSessionBase):
-    """A creation class for TracerSession."""
-
-    id: Optional[UUID]
 
 
 class TracerSession(TracerSessionBase):
@@ -93,6 +85,9 @@ class ToolRun(BaseRun):
     child_tool_runs: List[ToolRun] = Field(default_factory=list)
 
 
+# Begin V2 API Schemas
+
+
 class RunTypeEnum(str, Enum):
     """Enum for run types."""
 
@@ -107,10 +102,10 @@ class RunBase(BaseModel):
     id: Optional[UUID]
     start_time: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
     end_time: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
-    extra: dict
+    extra: Optional[Dict[str, Any]] = None
     error: Optional[str]
     execution_order: int
-    child_execution_order: int
+    child_execution_order: Optional[int]
     serialized: dict
     inputs: dict
     outputs: Optional[dict]
@@ -128,14 +123,17 @@ class Run(RunBase):
     @root_validator(pre=True)
     def assign_name(cls, values: dict) -> dict:
         """Assign name to the run."""
-        if "name" not in values:
-            values["name"] = values["serialized"]["name"]
+        if values.get("name") is None:
+            if "name" in values["serialized"]:
+                values["name"] = values["serialized"]["name"]
+            elif "id" in values["serialized"]:
+                values["name"] = values["serialized"]["id"][-1]
         return values
 
 
 class RunCreate(RunBase):
     name: str
-    session_id: UUID
+    session_name: Optional[str] = None
 
     @root_validator(pre=True)
     def add_runtime_env(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,6 +142,14 @@ class RunCreate(RunBase):
         extra["runtime"] = get_runtime_environment()
         values["extra"] = extra
         return values
+
+
+class RunUpdate(BaseModel):
+    end_time: Optional[datetime.datetime]
+    error: Optional[str]
+    outputs: Optional[dict]
+    parent_run_id: Optional[UUID]
+    reference_example_id: Optional[UUID]
 
 
 ChainRun.update_forward_refs()
