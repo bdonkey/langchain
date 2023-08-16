@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, List, Mapping, Optional
 
-from pydantic import Extra, Field, root_validator
+from pydantic_v1 import Extra, Field, root_validator
 
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
@@ -93,12 +93,14 @@ class Petals(LLM):
             values, "huggingface_api_key", "HUGGINGFACE_API_KEY"
         )
         try:
-            from petals import DistributedBloomForCausalLM
-            from transformers import BloomTokenizerFast
+            from petals import AutoDistributedModelForCausalLM
+            from transformers import AutoTokenizer
 
             model_name = values["model_name"]
-            values["tokenizer"] = BloomTokenizerFast.from_pretrained(model_name)
-            values["client"] = DistributedBloomForCausalLM.from_pretrained(model_name)
+            values["tokenizer"] = AutoTokenizer.from_pretrained(model_name)
+            values["client"] = AutoDistributedModelForCausalLM.from_pretrained(
+                model_name
+            )
             values["huggingface_api_key"] = huggingface_api_key
 
         except ImportError:
