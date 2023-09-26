@@ -10,9 +10,8 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
-
-from pydantic_v1 import BaseModel
 
 from langchain.base_language import BaseLanguageModel
 from langchain.chains import LLMChain
@@ -22,7 +21,9 @@ from langchain.output_parsers.openai_functions import (
     PydanticOutputFunctionsParser,
 )
 from langchain.prompts import BasePromptTemplate
+from langchain.pydantic_v1 import BaseModel
 from langchain.schema import BaseLLMOutputParser
+from langchain.utils.openai_functions import convert_pydantic_to_openai_function
 
 PYTHON_TO_JSON_TYPES = {
     "str": "string",
@@ -149,14 +150,7 @@ def convert_to_openai_function(
     if isinstance(function, dict):
         return function
     elif isinstance(function, type) and issubclass(function, BaseModel):
-        # Mypy error:
-        # "type" has no attribute "schema"
-        schema = function.schema()  # type: ignore[attr-defined]
-        return {
-            "name": schema["title"],
-            "description": schema["description"],
-            "parameters": schema,
-        }
+        return cast(Dict, convert_pydantic_to_openai_function(function))
     elif callable(function):
         return convert_python_function_to_openai_function(function)
 
@@ -226,11 +220,13 @@ def create_openai_fn_chain(
     Example:
         .. code-block:: python
 
+                from typing import Optional
+
                 from langchain.chains.openai_functions import create_openai_fn_chain
                 from langchain.chat_models import ChatOpenAI
                 from langchain.prompts import ChatPromptTemplate
 
-                from pydantic import BaseModel, Field
+                from langchain.pydantic_v1 import BaseModel, Field
 
 
                 class RecordPerson(BaseModel):
@@ -312,11 +308,13 @@ def create_structured_output_chain(
     Example:
         .. code-block:: python
 
+                from typing import Optional
+
                 from langchain.chains.openai_functions import create_structured_output_chain
                 from langchain.chat_models import ChatOpenAI
                 from langchain.prompts import ChatPromptTemplate
 
-                from pydantic import BaseModel, Field
+                from langchain.pydantic_v1 import BaseModel, Field
 
                 class Dog(BaseModel):
                     \"\"\"Identifying information about a dog.\"\"\"

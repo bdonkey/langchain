@@ -1,4 +1,3 @@
-"""Wrapper around FAISS vector database."""
 from __future__ import annotations
 
 import operator
@@ -23,8 +22,8 @@ import numpy as np
 from langchain.docstore.base import AddableMixin, Docstore
 from langchain.docstore.document import Document
 from langchain.docstore.in_memory import InMemoryDocstore
-from langchain.embeddings.base import Embeddings
-from langchain.vectorstores.base import VectorStore
+from langchain.schema.embeddings import Embeddings
+from langchain.schema.vectorstore import VectorStore
 from langchain.vectorstores.utils import DistanceStrategy, maximal_marginal_relevance
 
 
@@ -65,7 +64,7 @@ def _len_check_if_sized(x: Any, y: Any, x_name: str, y_name: str) -> None:
 
 
 class FAISS(VectorStore):
-    """Wrapper around FAISS vector database.
+    """`Meta Faiss` vector store.
 
     To use, you must have the ``faiss`` python package installed.
 
@@ -594,7 +593,7 @@ class FAISS(VectorStore):
         Example:
             .. code-block:: python
 
-                from langchain import FAISS
+                from langchain.vectorstores import FAISS
                 from langchain.embeddings import OpenAIEmbeddings
 
                 embeddings = OpenAIEmbeddings()
@@ -631,7 +630,7 @@ class FAISS(VectorStore):
         Example:
             .. code-block:: python
 
-                from langchain import FAISS
+                from langchain.vectorstores import FAISS
                 from langchain.embeddings import OpenAIEmbeddings
 
                 embeddings = OpenAIEmbeddings()
@@ -737,6 +736,8 @@ class FAISS(VectorStore):
         elif self.distance_strategy == DistanceStrategy.EUCLIDEAN_DISTANCE:
             # Default behavior is to use euclidean distance relevancy
             return self._euclidean_relevance_score_fn
+        elif self.distance_strategy == DistanceStrategy.COSINE:
+            return self._cosine_relevance_score_fn
         else:
             raise ValueError(
                 "Unknown distance strategy, must be cosine, max_inner_product,"

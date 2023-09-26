@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import uuid
 import warnings
-from abc import ABC
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -18,9 +17,9 @@ from typing import (
 
 from langchain._api import deprecated
 from langchain.docstore.document import Document
-from langchain.embeddings.base import Embeddings
+from langchain.schema.embeddings import Embeddings
+from langchain.schema.vectorstore import VectorStore
 from langchain.utils import get_from_dict_or_env
-from langchain.vectorstores.base import VectorStore
 
 if TYPE_CHECKING:
     from elasticsearch import Elasticsearch
@@ -53,17 +52,17 @@ def _default_script_query(query_vector: List[float], filter: Optional[dict]) -> 
 
 
 @deprecated("0.0.265", alternative="ElasticsearchStore class.", pending=True)
-class ElasticVectorSearch(VectorStore, ABC):
-    """Wrapper around Elasticsearch as a vector database.
+class ElasticVectorSearch(VectorStore):
+    """[DEPRECATED] `Elasticsearch` vector store.
 
-    To connect to an Elasticsearch instance that does not require
+    To connect to an `Elasticsearch` instance that does not require
     login credentials, pass the Elasticsearch URL and index name along with the
     embedding object to the constructor.
 
     Example:
         .. code-block:: python
 
-            from langchain import ElasticVectorSearch
+            from langchain.vectorstores import ElasticVectorSearch
             from langchain.embeddings import OpenAIEmbeddings
 
             embedding = OpenAIEmbeddings()
@@ -99,7 +98,7 @@ class ElasticVectorSearch(VectorStore, ABC):
     Example:
         .. code-block:: python
 
-            from langchain import ElasticVectorSearch
+            from langchain.vectorstores import ElasticVectorSearch
             from langchain.embeddings import OpenAIEmbeddings
 
             embedding = OpenAIEmbeddings()
@@ -283,7 +282,7 @@ class ElasticVectorSearch(VectorStore, ABC):
         Example:
             .. code-block:: python
 
-                from langchain import ElasticVectorSearch
+                from langchain.vectorstores import ElasticVectorSearch
                 from langchain.embeddings import OpenAIEmbeddings
                 embeddings = OpenAIEmbeddings()
                 elastic_vector_search = ElasticVectorSearch.from_texts(
@@ -340,12 +339,11 @@ class ElasticVectorSearch(VectorStore, ABC):
             self.client.delete(index=self.index_name, id=id)
 
 
-class ElasticKnnSearch(VectorStore, ABC):
-    """
-    ElasticKnnSearch is a class for performing k-nearest neighbor
-    (k-NN) searches on text data using Elasticsearch.
+class ElasticKnnSearch(VectorStore):
+    """[DEPRECATED] `Elasticsearch` with k-nearest neighbor search
+    (`k-NN`) vector store.
 
-    This class is used to create an Elasticsearch index of text data that
+    It creates an Elasticsearch index of text data that
     can be searched using k-NN search. The text data is transformed into
     vector embeddings using a provided embedding model, and these embeddings
     are stored in the Elasticsearch index.

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import (
     Any,
     Callable,
+    Dict,
     List,
     Sequence,
     Set,
@@ -16,12 +17,11 @@ from typing import (
     overload,
 )
 
-from pydantic_v1 import Field, root_validator
-
 from langchain._api import deprecated
 from langchain.load.serializable import Serializable
 from langchain.prompts.base import StringPromptTemplate
 from langchain.prompts.prompt import PromptTemplate
+from langchain.pydantic_v1 import Field, root_validator
 from langchain.schema import (
     BasePromptTemplate,
     PromptValue,
@@ -39,13 +39,9 @@ from langchain.schema.messages import (
 class BaseMessagePromptTemplate(Serializable, ABC):
     """Base class for message prompt templates."""
 
-    @property
-    def lc_serializable(self) -> bool:
-        """Whether this object should be serialized.
-
-        Returns:
-            Whether this object should be serialized.
-        """
+    @classmethod
+    def is_lc_serializable(cls) -> bool:
+        """Return whether or not the class is serializable."""
         return True
 
     @abstractmethod
@@ -229,7 +225,7 @@ class ChatMessagePromptTemplate(BaseStringMessagePromptTemplate):
 
 
 class HumanMessagePromptTemplate(BaseStringMessagePromptTemplate):
-    """Human message prompt template. This is a message that is sent to the user."""
+    """Human message prompt template. This is a message sent from the user."""
 
     def format(self, **kwargs: Any) -> BaseMessage:
         """Format the prompt template.
@@ -245,7 +241,7 @@ class HumanMessagePromptTemplate(BaseStringMessagePromptTemplate):
 
 
 class AIMessagePromptTemplate(BaseStringMessagePromptTemplate):
-    """AI message prompt template. This is a message that is not sent to the user."""
+    """AI message prompt template. This is a message sent from the AI."""
 
     def format(self, **kwargs: Any) -> BaseMessage:
         """Format the prompt template.
@@ -299,6 +295,15 @@ class ChatPromptValue(PromptValue):
 class BaseChatPromptTemplate(BasePromptTemplate, ABC):
     """Base class for chat prompt templates."""
 
+    @property
+    def lc_attributes(self) -> Dict:
+        """
+        Return a list of attribute names that should be included in the
+        serialized kwargs. These attributes must be accepted by the
+        constructor.
+        """
+        return {"input_variables": self.input_variables}
+
     def format(self, **kwargs: Any) -> str:
         """Format the chat template into a string.
 
@@ -338,7 +343,7 @@ MessageLikeRepresentation = Union[
 ]
 
 
-class ChatPromptTemplate(BaseChatPromptTemplate, ABC):
+class ChatPromptTemplate(BaseChatPromptTemplate):
     """A prompt template for chat models.
 
     Use to create flexible templated prompts for chat models.
@@ -420,7 +425,7 @@ class ChatPromptTemplate(BaseChatPromptTemplate, ABC):
                     f"Got: {values['input_variables']}"
                 )
         else:
-            values["input_variables"] = list(input_vars)
+            values["input_variables"] = sorted(input_vars)
         return values
 
     @classmethod
@@ -665,18 +670,18 @@ def _create_template_from_message_type(
     Returns:
         a message prompt template of the appropriate type.
     """
-    if message_type == "human":
+    if message_type in ("human", "user"):
         message: BaseMessagePromptTemplate = HumanMessagePromptTemplate.from_template(
             template
         )
-    elif message_type == "ai":
+    elif message_type in ("ai", "assistant"):
         message = AIMessagePromptTemplate.from_template(template)
     elif message_type == "system":
         message = SystemMessagePromptTemplate.from_template(template)
     else:
         raise ValueError(
-            f"Unexpected message type: {message_type}. Use one of 'human', 'ai', "
-            f"or 'system'."
+            f"Unexpected message type: {message_type}. Use one of 'human',"
+            f" 'user', 'ai', 'assistant', or 'system'."
         )
     return message
 

@@ -15,14 +15,17 @@ from typing import (
     Union,
 )
 
-from pydantic_v1 import Field, root_validator
-
 from langchain.callbacks.manager import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
 )
-from langchain.chat_models.base import BaseChatModel
+from langchain.chat_models.base import (
+    BaseChatModel,
+    _agenerate_from_stream,
+    _generate_from_stream,
+)
 from langchain.llms.base import create_base_retry_decorator
+from langchain.pydantic_v1 import Field, root_validator
 from langchain.schema import (
     ChatGeneration,
     ChatResult,
@@ -189,25 +192,9 @@ def _convert_message_to_dict(message: BaseMessage) -> dict:
 
 
 class ChatLiteLLM(BaseChatModel):
-    """`LiteLLM` Chat models API.
-
-    To use you must have the google.generativeai Python package installed and
-    either:
-
-        1. The ``GOOGLE_API_KEY``` environment variable set with your API key, or
-        2. Pass your API key using the google_api_key kwarg to the ChatGoogle
-           constructor.
-
-    Example:
-        .. code-block:: python
-
-            from langchain.chat_models import ChatGooglePalm
-            chat = ChatGooglePalm()
-
-    """
-
     client: Any  #: :meta private:
-    model_name: str = "gpt-3.5-turbo"
+    model: str = "gpt-3.5-turbo"
+    model_name: Optional[str] = None
     """Model name to use."""
     openai_api_key: Optional[str] = None
     azure_api_key: Optional[str] = None
@@ -218,8 +205,9 @@ class ChatLiteLLM(BaseChatModel):
     streaming: bool = False
     api_base: Optional[str] = None
     organization: Optional[str] = None
+    custom_llm_provider: Optional[str] = None
     request_timeout: Optional[Union[float, Tuple[float, float]]] = None
-    temperature: Optional[float] = None
+    temperature: Optional[float] = 1
     model_kwargs: Dict[str, Any] = Field(default_factory=dict)
     """Run inference with this temperature. Must by in the closed
        interval [0.0, 1.0]."""
@@ -239,8 +227,11 @@ class ChatLiteLLM(BaseChatModel):
     @property
     def _default_params(self) -> Dict[str, Any]:
         """Get the default parameters for calling OpenAI API."""
+        set_model_value = self.model
+        if self.model_name is not None:
+            set_model_value = self.model_name
         return {
-            "model": self.model_name,
+            "model": set_model_value,
             "force_timeout": self.request_timeout,
             "max_tokens": self.max_tokens,
             "stream": self.streaming,
@@ -252,10 +243,13 @@ class ChatLiteLLM(BaseChatModel):
     @property
     def _client_params(self) -> Dict[str, Any]:
         """Get the parameters used for the openai client."""
+        set_model_value = self.model
+        if self.model_name is not None:
+            set_model_value = self.model_name
         self.client.api_base = self.api_base
         self.client.organization = self.organization
         creds: Dict[str, Any] = {
-            "model": self.model_name,
+            "model": set_model_value,
             "force_timeout": self.request_timeout,
         }
         return {**self._default_params, **creds}
@@ -298,6 +292,15 @@ class ChatLiteLLM(BaseChatModel):
         values["openrouter_api_key"] = get_from_dict_or_env(
             values, "openrouter_api_key", "OPENROUTER_API_KEY", default=""
         )
+        values["cohere_api_key"] = get_from_dict_or_env(
+            values, "cohere_api_key", "COHERE_API_KEY", default=""
+        )
+        values["huggingface_api_key"] = get_from_dict_or_env(
+            values, "huggingface_api_key", "HUGGINGFACE_API_KEY", default=""
+        )
+        values["together_ai_api_key"] = get_from_dict_or_env(
+            values, "together_ai_api_key", "TOGETHERAI_API_KEY", default=""
+        )
         values["client"] = litellm
 
         if values["temperature"] is not None and not 0 <= values["temperature"] <= 1:
@@ -319,17 +322,12 @@ class ChatLiteLLM(BaseChatModel):
         stream: Optional[bool] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        if stream if stream is not None else self.streaming:
-            generation: Optional[ChatGenerationChunk] = None
-            for chunk in self._stream(
-                messages=messages, stop=stop, run_manager=run_manager, **kwargs
-            ):
-                if generation is None:
-                    generation = chunk
-                else:
-                    generation += chunk
-            assert generation is not None
-            return ChatResult(generations=[generation])
+        should_stream = stream if stream is not None else self.streaming
+        if should_stream:
+            stream_iter = self._stream(
+                messages, stop=stop, run_manager=run_manager, **kwargs
+            )
+            return _generate_from_stream(stream_iter)
 
         message_dicts, params = self._create_message_dicts(messages, stop)
         params = {**params, **kwargs}
@@ -348,7 +346,10 @@ class ChatLiteLLM(BaseChatModel):
             )
             generations.append(gen)
         token_usage = response.get("usage", {})
-        llm_output = {"token_usage": token_usage, "model_name": self.model_name}
+        set_model_value = self.model
+        if self.model_name is not None:
+            set_model_value = self.model_name
+        llm_output = {"token_usage": token_usage, "model": set_model_value}
         return ChatResult(generations=generations, llm_output=llm_output)
 
     def _create_message_dicts(
@@ -416,17 +417,12 @@ class ChatLiteLLM(BaseChatModel):
         stream: Optional[bool] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        if stream if stream is not None else self.streaming:
-            generation: Optional[ChatGenerationChunk] = None
-            async for chunk in self._astream(
+        should_stream = stream if stream is not None else self.streaming
+        if should_stream:
+            stream_iter = self._astream(
                 messages=messages, stop=stop, run_manager=run_manager, **kwargs
-            ):
-                if generation is None:
-                    generation = chunk
-                else:
-                    generation += chunk
-            assert generation is not None
-            return ChatResult(generations=[generation])
+            )
+            return await _agenerate_from_stream(stream_iter)
 
         message_dicts, params = self._create_message_dicts(messages, stop)
         params = {**params, **kwargs}
@@ -438,8 +434,11 @@ class ChatLiteLLM(BaseChatModel):
     @property
     def _identifying_params(self) -> Dict[str, Any]:
         """Get the identifying parameters."""
+        set_model_value = self.model
+        if self.model_name is not None:
+            set_model_value = self.model_name
         return {
-            "model_name": self.model_name,
+            "model": set_model_value,
             "temperature": self.temperature,
             "top_p": self.top_p,
             "top_k": self.top_k,

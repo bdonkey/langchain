@@ -1,4 +1,3 @@
-"""Wrapper around the Dingo vector database."""
 from __future__ import annotations
 
 import logging
@@ -8,15 +7,15 @@ from typing import Any, Iterable, List, Optional, Tuple
 import numpy as np
 
 from langchain.docstore.document import Document
-from langchain.embeddings.base import Embeddings
-from langchain.vectorstores.base import VectorStore
+from langchain.schema.embeddings import Embeddings
+from langchain.schema.vectorstore import VectorStore
 from langchain.vectorstores.utils import maximal_marginal_relevance
 
 logger = logging.getLogger(__name__)
 
 
 class Dingo(VectorStore):
-    """Wrapper around Dingo vector database.
+    """`Dingo` vector store.
 
     To use, you should have the ``dingodb`` python package installed.
 
@@ -287,7 +286,7 @@ class Dingo(VectorStore):
                 Example:
                     .. code-block:: python
 
-                        from langchain import Dingo
+                        from langchain.vectorstores import Dingo
                         from langchain.embeddings import OpenAIEmbeddings
                         import dingodb
         sss
