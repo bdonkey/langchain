@@ -1,23 +1,26 @@
 """Vector SQL Database Chain Retriever"""
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from langchain.callbacks.manager import CallbackManagerForChainRun
 from langchain.chains.llm import LLMChain
 from langchain.chains.sql_database.prompt import PROMPT, SQL_PROMPTS
 from langchain.prompts.prompt import PromptTemplate
-from langchain.schema import BaseOutputParser, BasePromptTemplate
-from langchain.schema.embeddings import Embeddings
-from langchain.schema.language_model import BaseLanguageModel
-from langchain.tools.sql_database.prompt import QUERY_CHECKER
-from langchain.utilities.sql_database import SQLDatabase
+from langchain_community.tools.sql_database.prompt import QUERY_CHECKER
+from langchain_community.utilities.sql_database import SQLDatabase
+from langchain_core.embeddings import Embeddings
+from langchain_core.language_models import BaseLanguageModel
+from langchain_core.output_parsers import BaseOutputParser
+from langchain_core.prompts import BasePromptTemplate
 
 from langchain_experimental.sql.base import INTERMEDIATE_STEPS_KEY, SQLDatabaseChain
 
 
 class VectorSQLOutputParser(BaseOutputParser[str]):
-    """Output Parser for Vector SQL
+    """Output Parser for Vector SQL.
+
     1. finds for `NeuralArray()` and replace it with the embedding
     2. finds for `DISTANCE()` and replace it with the distance name in backend SQL
     """
@@ -59,8 +62,8 @@ class VectorSQLOutputParser(BaseOutputParser[str]):
 
 
 class VectorSQLRetrieveAllOutputParser(VectorSQLOutputParser):
-    """Based on VectorSQLOutputParser
-    It also modify the SQL to get all columns
+    """Parser based on VectorSQLOutputParser.
+    It also modifies the SQL to get all columns.
     """
 
     @property
@@ -76,10 +79,11 @@ class VectorSQLRetrieveAllOutputParser(VectorSQLOutputParser):
         return super().parse(text)
 
 
-def get_result_from_sqldb(
-    db: SQLDatabase, cmd: str
-) -> Union[str, List[Dict[str, Any]], Dict[str, Any]]:
-    result = db._execute(cmd, fetch="all")  # type: ignore
+def get_result_from_sqldb(db: SQLDatabase, cmd: str) -> Sequence[Dict[str, Any]]:
+    """Get result from SQL Database."""
+
+    result = db._execute(cmd, fetch="all")
+    assert isinstance(result, Sequence)
     return result
 
 
@@ -90,7 +94,7 @@ class VectorSQLDatabaseChain(SQLDatabaseChain):
         .. code-block:: python
 
             from langchain_experimental.sql import SQLDatabaseChain
-            from langchain.llms import OpenAI, SQLDatabase, OpenAIEmbeddings
+            from langchain_community.llms import OpenAI, SQLDatabase, OpenAIEmbeddings
             db = SQLDatabase(...)
             db_chain = VectorSQLDatabaseChain.from_llm(OpenAI(), db, OpenAIEmbeddings())
 
@@ -179,8 +183,9 @@ class VectorSQLDatabaseChain(SQLDatabaseChain):
             _run_manager.on_text("\nSQLResult: ", verbose=self.verbose)
             _run_manager.on_text(str(result), color="yellow", verbose=self.verbose)
             # If return direct, we just set the final result equal to
-            # the result of the sql query result, otherwise try to get a human readable
-            # final answer
+            # the result of the sql query result (`Sequence[Dict[str, Any]]`),
+            # otherwise try to get a human readable final answer (`str`).
+            final_result: Union[str, Sequence[Dict[str, Any]]]
             if self.return_direct:
                 final_result = result
             else:
